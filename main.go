@@ -12,8 +12,11 @@ import (
 
 var options struct {
 	pidfile string
+	lineBuf int
 }
 
+// writes out a message and then exits with the status coded provided by
+// status.  Since bail calls os.Exit, defered functions are not run.
 func bail(status int, template string, args ...interface{}) {
 	if status == 0 {
 		fmt.Fprintf(os.Stdout, template, args...)
@@ -23,18 +26,23 @@ func bail(status int, template string, args ...interface{}) {
 	os.Exit(status)
 }
 
+// writes out the current process's pid to a file
 func writePid() error {
 	f, err := os.OpenFile(options.pidfile, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}
+	defer f.Close()
+
 	if _, err := fmt.Fprintln(f, os.Getpid()); err != nil {
 		return err
 	}
-	f.Close()
 	return nil
 }
 
+// writes lines to the file handled by the fileopener f as they appear on the
+// channel c.  when huppend receives a hup process, the fileopener f is
+// reopened.
 func writelines(f *fileOpener, c chan []byte) {
 	hup := make(chan os.Signal, 1)
 	signal.Notify(hup, syscall.SIGHUP)
@@ -65,6 +73,8 @@ func writelines(f *fileOpener, c chan []byte) {
 	}
 }
 
+// a fileopener wraps a file and provides a helper for reopening the file by
+// path.
 type fileOpener struct {
 	*os.File
 	fname string
@@ -81,6 +91,10 @@ func (f *fileOpener) Open() error {
 	return nil
 }
 
+// closes and reopens the file found at the fileopener's specified path.  If
+// the original file has moved, reopen will cause the fileopener to change which
+// inode it points to.  If the original file has been moved or deleted, and a
+// new file has not been created in its place,
 func (f *fileOpener) Reopen() error {
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("fileOpener unable to reopen file: %v", err)
@@ -120,7 +134,7 @@ func main() {
 		bail(1, "unable to write pidfile: %v", err)
 	}
 
-	c := make(chan []byte)
+	c := make(chan []byte, options.lineBuf)
 	go writelines(f, c)
 
 	r := bufio.NewReader(os.Stdin)
@@ -140,4 +154,5 @@ func main() {
 
 func init() {
 	flag.StringVar(&options.pidfile, "pidfile", "./huppend.pid", "pidfile")
+	flag.IntVar(&options.lineBuf, "linebuf", 200, "number of lines allowed to be in memory before writer is blocked")
 }
