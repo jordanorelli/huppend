@@ -77,9 +77,18 @@ func writelines(f *fileOpener, c chan []byte) {
 // path.
 type fileOpener struct {
 	*os.File
+
+	// name of the file to be opened
 	fname string
-	flag  int
-	mode  os.FileMode
+
+	// file create flags to be passed to os.Open when opening the file..  If
+	// you don't include os.O_APPEND you're most likely doing it wrong.
+	flag int
+
+	// file permissions on file to be created, passed to os.Open.  If you don't
+	// include os.O_CREATE in the flags then this is inconsequential since
+	// we're not going to create new files anyway.
+	mode os.FileMode
 }
 
 func (f *fileOpener) Open() error {
@@ -94,7 +103,10 @@ func (f *fileOpener) Open() error {
 // closes and reopens the file found at the fileopener's specified path.  If
 // the original file has moved, reopen will cause the fileopener to change which
 // inode it points to.  If the original file has been moved or deleted, and a
-// new file has not been created in its place,
+// new file has not been created in its place, the fileOpener *may* create a
+// new file, depending on its initial flags.  (spoiler alert: since we only use
+// this once, and we do include the create flag, reopen will always create a
+// file if none exists)
 func (f *fileOpener) Reopen() error {
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("fileOpener unable to reopen file: %v", err)
