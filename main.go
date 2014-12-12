@@ -64,8 +64,7 @@ func writelines(f *fileOpener, c chan []byte) {
 			}
 		case <-hup:
 			if err := f.Reopen(); err != nil {
-				f.Close()
-				bail(1, "unable to reopen file in writelines loop: %v", err)
+				fmt.Fprintf(os.Stderr, "unable to reopen file in writelines loop: %v\n", err)
 			}
 		case <-kill:
 			return
@@ -108,13 +107,13 @@ func (f *fileOpener) Open() error {
 // this once, and we do include the create flag, reopen will always create a
 // file if none exists)
 func (f *fileOpener) Reopen() error {
-	if err := f.Close(); err != nil {
+	f2, err := os.OpenFile(f.fname, f.flag, f.mode)
+	if err != nil {
 		return fmt.Errorf("fileOpener unable to reopen file: %v", err)
 	}
-	if err := f.Open(); err != nil {
-		return fmt.Errorf("fileOpener unable to reopen file: %v", err)
-	}
-	return nil
+	f1 := f.File
+	f.File = f2
+	return f1.Close() // hmm, do we care if we failed to close this file handle?
 }
 
 func (f *fileOpener) Close() error {
